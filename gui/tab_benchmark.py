@@ -6,6 +6,10 @@ from tkinter import filedialog, ttk
 import unittest
 
 from benchmarks.benchmark import run_all_benchmarks, save_to_json_file
+import tests.test_sha256 as test_sha
+import tests.test_aes128 as test_aes
+import tests.test_ecc as test_ecc
+import tests.test_schnorr as test_schnorr
 
 
 class TabBenchmark(ttk.Frame):
@@ -108,9 +112,14 @@ class TabBenchmark(ttk.Frame):
         thread.start()
 
     def _worker_run_tests(self):
-        """Worker thread function executing unittest discovery."""
+        """Worker thread function executing unittest modules directly."""
         loader = unittest.TestLoader()
-        suite = loader.discover("tests", pattern="test_*.py")
+        suite = unittest.TestSuite()
+        suite.addTests(loader.loadTestsFromModule(test_sha))
+        suite.addTests(loader.loadTestsFromModule(test_aes))
+        suite.addTests(loader.loadTestsFromModule(test_ecc))
+        suite.addTests(loader.loadTestsFromModule(test_schnorr))
+
         stream = io.StringIO()
         runner = unittest.TextTestRunner(stream=stream, verbosity=2)
         result = runner.run(suite)
