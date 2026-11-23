@@ -1,0 +1,153 @@
+name: Build and Release Standalone Binaries
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Binary on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            platform: linux-x64
+            ext: ""
+          - os: windows-latest
+            platform: windows-x64
+            ext: ".exe"
+          - os: macos-latest
+            platform: macos
+            ext: ""
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify commit belongs to main branch
+        shell: bash
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::Build rejected: commit is not on the 'main' branch."
+            exit 1
+          fi
+          echo "Commit verified to be on main branch."
+
+      - name: Resolve Binary Filename (Dynamic / No Hardcoded Version)
+        shell: bash
+        run: |
+          TAG=""
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG=$(git describe --tags --exact-match 2>/dev/null || true)
+          fi
+
+          if [ -n "$TAG" ]; then
+            echo "Resolved tag: $TAG"
+            BIN_NAME="CryptoSuite-${TAG}-${{ matrix.platform }}${{ matrix.ext }}"
+          else
+            echo "No tag found. Building plain binary without version tag."
+            BIN_NAME="CryptoSuite-${{ matrix.platform }}${{ matrix.ext }}"
+          fi
+
+          echo "BIN_NAME=${BIN_NAME}" >> $GITHUB_ENV
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install System Dependencies (Linux Tkinter)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk
+
+      - name: Install PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+
+      - name: Build Standalone Binary with PyInstaller
+        shell: bash
+        run: |
+          pyinstaller --onefile --windowed --name "${BIN_NAME}" main.py
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.platform }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify commit belongs to main branch
+        shell: bash
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::Build rejected: commit is not on the 'main' branch."
+            exit 1
+          fi
+
+      - name: Determine Release Target
+        shell: bash
+        run: |
+          TAG=""
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+          else
+            TAG=$(git describe --tags --exact-match 2>/dev/null || true)
+          fi
+
+          if [ -n "$TAG" ]; then
+            echo "RELEASE_TAG=${TAG}" >> $GITHUB_ENV
+            echo "RELEASE_NAME=Release ${TAG}" >> $GITHUB_ENV
+            echo "IS_PRERELEASE=false" >> $GITHUB_ENV
+          else
+            echo "RELEASE_TAG=latest" >> $GITHUB_ENV
+            echo "RELEASE_NAME=Latest Build (main)" >> $GITHUB_ENV
+            echo "IS_PRERELEASE=true" >> $GITHUB_ENV
+          fi
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release_dist
+          merge-multiple: true
+
+      - name: List Release Files
+        run: |
+          echo "Files to publish to Release:"
+          ls -lh release_dist/
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_NAME }}
+          draft: false
+          prerelease: ${{ env.IS_PRERELEASE == 'true' }}
+          generate_release_notes: true
+          files: release_dist/*
