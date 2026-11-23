@@ -1,6 +1,8 @@
 import tkinter as tk
 from tkinter import ttk
 
+from algorithms.sha256 import sha256_hex
+
 
 class TabSHA256(ttk.Frame):
     """Tab 1: SHA-256 Hash Function & AES-128 Key Derivation."""
@@ -64,8 +66,16 @@ class TabSHA256(ttk.Frame):
         self.txt_info.pack(fill="both", expand=True, padx=5, pady=5)
         self._load_spec_info()
 
-        # Initialize hex preview
+        # Initialize hex preview and compute initial values
         self._on_input_change(None)
+        self.compute_sha256()
+
+    def _set_entry_text(self, entry: ttk.Entry, text: str):
+        """Helper to modify a readonly entry widget."""
+        entry.config(state="normal")
+        entry.delete(0, tk.END)
+        entry.insert(0, text)
+        entry.config(state="readonly")
 
     def _on_input_change(self, event):
         text = self.entry_input.get()
@@ -81,20 +91,35 @@ class TabSHA256(ttk.Frame):
             "\n"
             "AES-128 KEY DERIVATION SPECIFICATION:\n"
             "- Student Name: 'Hồ Văn Phát' -> UTF-8 bytes -> SHA-256 digest.\n"
-            "- AES-128 Key = First 16 bytes (128 bits) of SHA-256 digest.\n"
+            "- AES-128 Key = First 16 bytes (128 bits / 32 hex chars) of SHA-256 digest.\n"
             "- Standard CBC mode uses this 128-bit key with PKCS#7 padding."
         )
         self.txt_info.insert("1.0", info_text)
         self.txt_info.config(state="disabled")
 
     def compute_sha256(self):
-        """Placeholder for logic integration."""
-        pass
+        """Compute SHA-256 digest of input string."""
+        text = self.entry_input.get()
+        digest_hex = sha256_hex(text)
+        self._set_entry_text(self.entry_digest, digest_hex)
+        self.app.set_status(f"SHA-256 digest computed for input: '{text}'", "#0f172a")
+        return digest_hex
 
     def extract_aes_key(self):
-        """Placeholder for logic integration."""
-        pass
+        """Extract first 128 bits (16 bytes / 32 hex chars) as AES-128 key."""
+        digest_hex = self.entry_digest.get()
+        if not digest_hex:
+            digest_hex = self.compute_sha256()
+
+        key_hex = digest_hex[:32]
+        self._set_entry_text(self.entry_aes_key, key_hex)
+        self.app.set_status("Extracted 128-bit AES key (first 16 bytes of SHA-256 digest).", "#16a34a")
+        return key_hex
 
     def transfer_key(self):
-        """Transfer key to Tab 2."""
-        pass
+        """Transfer extracted key directly to Tab 2."""
+        key_hex = self.entry_aes_key.get()
+        if not key_hex:
+            key_hex = self.extract_aes_key()
+
+        self.app.transfer_key_to_aes(key_hex)

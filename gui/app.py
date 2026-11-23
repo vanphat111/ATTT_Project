@@ -18,8 +18,8 @@ class CryptoApp(tk.Tk):
 
         self._configure_styles()
         self._build_header()
-        self._build_notebook()
         self._build_statusbar()
+        self._build_notebook()
 
     def _configure_styles(self):
         self.style = ttk.Style(self)
@@ -107,7 +107,8 @@ class CryptoApp(tk.Tk):
 
     def set_status(self, text: str, fg: str = "#0f172a"):
         """Update bottom status bar message."""
-        self.lbl_status.config(text=text, fg=fg)
+        if hasattr(self, "lbl_status") and self.lbl_status.winfo_exists():
+            self.lbl_status.config(text=text, fg=fg)
 
     def transfer_key_to_aes(self, hex_key: str):
         """Pass derived AES key from Tab 1 directly to Tab 2 and switch view."""
